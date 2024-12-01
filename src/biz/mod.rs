@@ -328,7 +328,7 @@ impl CommandUtil {
 }
 
 impl CommandUtil {
-    pub async fn extract_zip_async(src_path: &str, dst_path: &str) -> anyhow::Result<()> {
+    async fn extract_zip_async(src_path: &str, dst_path: &str) -> anyhow::Result<()> {
         let archive = File::open(src_path)
             .await
             .with_context(|| format!("failed to open zip {} error ", src_path.to_string().red()))?;
