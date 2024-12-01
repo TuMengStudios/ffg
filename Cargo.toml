@@ -1,0 +1,38 @@
+[package]
+name = "rg"
+version = "0.1.0"
+edition = "2021"
+authors = ["2356450144@qq.com"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.41.1", features = ["full"] }
+reqwest = { version = "0.12.9", features = ["json", "stream"] }
+anyhow = { version = "1.0.93" }
+indicatif = { version = "0.17.9", features = ["tokio"] }
+futures-util = { version = "0.3.31" }
+thiserror = { version = "2.0.3" }
+human-panic = { version = "2.0.0" }
+dirs = { version = "5.0.1" }
+clap = { version = "4.4.6", features = [
+    "derive",
+    "wrap_help",
+    "env",
+    "string",
+    "default",
+] }
+lazy_static = { version = "1.5.0" }
+sha256 = { version = "1.5.0" }
+tar = { version = "0.4.43" }
+flate2 = { version = "1.0.35" }
+zip = { version = "2.2.1" }
+async_zip = { version = "0.0.17", features = ["full"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+futures-lite = { version = "2.1.0", default-features = false, features = [
+    "std",
+] }
+sanitize-filename = { version = "0.5.0" }
+dom_query = { version = "*" }
+colorful-console = { version = "0.3.0" }
+colored = { version = "2.1.0" }
