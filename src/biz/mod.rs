@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::process::exit;
+use std::str;
 use std::{fs, path::Path};
 
 use anyhow::Context;
@@ -27,12 +28,8 @@ pub struct CommandAction {
 
 impl CommandAction {
     pub async fn rm(version: &str) -> anyhow::Result<()> {
-        // todo
         let curr_version = CommandAction::current_version().await?;
-        let os = get_os();
-        let arch = get_arch();
-        let suffix = get_suffix();
-        let file_name = format!("go{version}.{os}-{arch}.{suffix}");
+        let file_name = CommandUtil::file_name(version);
         let zip_file = Path::new(&rg_home.clone())
             .join(pkgs.clone())
             .join(file_name);
@@ -76,6 +73,44 @@ impl CommandAction {
         Ok(current_version)
     }
 }
+
+impl CommandAction {
+    pub async fn ls_remote() -> anyhow::Result<()> {
+        let pkg_list = CommandAction::ls_remote_internal().await?;
+        pkg_list.keys().for_each(|e| {
+            // todo
+            println!("{}", e.bold())
+        });
+        Ok(())
+    }
+}
+
+impl CommandAction {
+    pub async fn ls() -> anyhow::Result<()> {
+        let local_version = CommandAction::local_version().await?;
+        let current_version_path = Path::new(&rg_home.clone()).join("go");
+        let mut current_version: String = "".to_owned();
+        if current_version_path.exists() && current_version_path.is_symlink() {
+            let res = current_version_path.read_link();
+            current_version = res
+                .unwrap()
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .replace("go", "");
+        }
+
+        local_version.iter().for_each(|f| {
+            if current_version.contains(f) {
+                println!("{} {}", f.green(), "*current".to_owned())
+            } else {
+                println!("{}", f);
+            }
+        });
+        Ok(())
+    }
+}
+
 impl CommandAction {
     pub async fn use_action(version: &str) -> anyhow::Result<()> {
         println!("use {}", version.bold().green());
@@ -85,10 +120,7 @@ impl CommandAction {
             return Ok(());
         }
 
-        let os = get_os();
-        let arch = get_arch();
-        let suffix = get_suffix();
-        let file_name = format!("go{version}.{os}-{arch}.{suffix}");
+        let file_name = CommandUtil::file_name(version);
 
         let mirror = rg_mirror.clone();
         let data = package_list
@@ -98,16 +130,18 @@ impl CommandAction {
             .find(|e| e.file_name == file_name);
         let url = Url::parse(&mirror)?.join(&data.unwrap().path)?;
         println!("downloading pkg {}", url.to_string().green());
+
         let save_path = Path::new(&rg_home.clone())
             .join(pkgs.clone())
             .join(&file_name);
-        download(url.as_str(), save_path.to_string_lossy().as_ref()).await?;
-        let sha256 = sum_sha256(save_path.to_string_lossy().as_ref()).await?;
+
+        CommandUtil::download(url.as_str(), save_path.to_string_lossy().as_ref()).await?;
+        let sha256 = CommandUtil::sum_sha256(save_path.to_string_lossy().as_ref()).await?;
         if !sha256.eq(&data.unwrap().sha256_checksum) {
             println!("checksum not pass {}", sha256.red());
             exit(1);
         }
-        unpack_file(save_path.to_string_lossy().as_ref()).await?;
+        CommandUtil::unpack_file(save_path.to_string_lossy().as_ref()).await?;
 
         let src_dir = Path::new(&rg_home.clone())
             .join(preset::pkgs.clone())
@@ -142,40 +176,9 @@ impl CommandAction {
 
         Ok(())
     }
+}
 
-    pub async fn ls() -> anyhow::Result<()> {
-        let local_version = CommandAction::local_version().await?;
-        let current_version_path = Path::new(&rg_home.clone()).join("go");
-        let mut current_version: String = "".to_owned();
-        if current_version_path.exists() && current_version_path.is_symlink() {
-            let res = current_version_path.read_link();
-            current_version = res
-                .unwrap()
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .replace("go", "");
-        }
-
-        local_version.iter().for_each(|f| {
-            if current_version.contains(f) {
-                println!("{} {}", f.green(), "*current".to_owned())
-            } else {
-                println!("{}", f);
-            }
-        });
-        Ok(())
-    }
-
-    pub async fn ls_remote() -> anyhow::Result<()> {
-        let pkg_list = CommandAction::ls_remote_internal().await?;
-        pkg_list.keys().for_each(|e| {
-            //
-            println!("{}", e.bold())
-        });
-        Ok(())
-    }
-
+impl CommandAction {
     async fn ls_remote_internal() -> anyhow::Result<HashMap<String, Vec<PackageInfo>>> {
         let mirror = preset::rg_mirror.clone();
         let dl_page_url = Url::parse(&mirror)?.join("dl")?;
@@ -229,7 +232,9 @@ impl CommandAction {
 
         Ok(package_list)
     }
+}
 
+impl CommandAction {
     async fn local_version() -> anyhow::Result<HashSet<String>> {
         let mut local_version = HashSet::new();
         let home = Path::new(&rg_home.clone()).join("packages");
@@ -268,186 +273,217 @@ impl PackageInfo {
     }
 }
 
-pub async fn download(url: &str, save_path: &str) -> anyhow::Result<()> {
-    let packages = Path::new(&preset::rg_home.clone()).join("packages");
-    if !packages.exists() {
-        fs::create_dir_all(&packages)?;
-    }
-    let full_path = Path::new(save_path);
-
-    if full_path.exists() {
-        std::fs::remove_file(full_path)?;
-    }
-
-    let mut file = File::create(&full_path).await?;
-    let response = reqwest::get(url).await?;
-    let len = response.content_length().unwrap_or(0);
-    let pb = ProgressBar::new(len);
-    pb.set_style(
-        ProgressStyle::default_bar()
-            .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>5}/{len:5} {msg}")?
-            .progress_chars("=> "),
-    );
-    let mut stream = response.bytes_stream();
-    while let Some(Ok(item)) = stream.next().await {
-        let chunk_size = item.len();
-        pb.inc(chunk_size.try_into().unwrap_or(0));
-        file.write_all(&item).await?;
-    }
-    pb.finish();
-    // let sha256 = sum_sha256(&full_path.as_path().to_string_lossy()).await?;
-
-    Ok(())
+struct CommandUtil {
+    // todo
 }
 
-async fn sum_sha256(path: &str) -> anyhow::Result<String> {
-    let input = Path::new(path);
-    let val = try_async_digest(input).await?; //.unwrap_or(String::new());
-    Ok(val)
-}
-
-async fn unpack_file(path: &str) -> anyhow::Result<()> {
-    let dst_path = Path::new(&rg_home.clone())
-        .join(preset::pkgs.clone())
-        .join("go");
-    if dst_path.exists() {
-        std::fs::remove_dir_all(dst_path)?;
-    }
-    let suffix = get_suffix();
-    if suffix == "tar.gz" {
-        let tar_gz = std::fs::File::open(path)?;
-        let tar = GzDecoder::new(tar_gz);
-        let mut archive = Archive::new(tar);
-        let unpack_path = Path::new(&preset::rg_home.clone()).join(preset::pkgs.clone());
-        archive.unpack(unpack_path)?;
-    } else {
-        // todo
-        let dst_path = Path::new(&rg_home.clone()).join(preset::pkgs.clone());
-        extract_zip_async(path, &dst_path.to_string_lossy()).await?;
-    }
-    Ok(())
-}
-
-// #[warn(unused_assignments)]
-fn get_os() -> &'static str {
-    #[warn(unused_assignments)]
-    let mut o = "<unknown>";
-    let _ = o;
-    #[cfg(target_os = "windows")]
-    {
-        o = "windows";
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        o = "linux";
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        o = "darwin";
-    }
-    o
-}
-
-fn get_suffix() -> &'static str {
-    #[allow(unused_assignments)]
-    let mut suffix: &str = "<unknown>";
-    #[cfg(target_os = "windows")]
-    {
-        suffix = "zip";
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        suffix = "tar.gz";
-    }
-    suffix
-}
-
-fn get_arch() -> &'static str {
-    if cfg!(target_arch = "x86") {
-        "386"
-    } else if cfg!(target_arch = "x86_64") {
-        "amd64"
-    } else if cfg!(target_arch = "mips") {
-        "mips"
-    } else if cfg!(target_arch = "arm") {
-        "arm"
-    } else if cfg!(target_arch = "aarch64") {
-        "arm64"
-    } else {
-        "<unknown>"
+impl CommandUtil {
+    pub fn file_name(version: &str) -> String {
+        let os = CommandUtil::get_os();
+        let arch = CommandUtil::get_arch();
+        let suffix = CommandUtil::get_suffix();
+        format!("go{version}.{os}-{arch}.{suffix}")
     }
 }
 
-async fn extract_zip_async(src_path: &str, dst_path: &str) -> anyhow::Result<()> {
-    let archive = File::open(src_path)
-        .await
-        .with_context(|| format!("failed to open zip {} error ", src_path.to_string().red()))?;
-    let out_dir = Path::new(dst_path);
-    unzip_file(archive, out_dir).await?;
-    Ok(())
+impl CommandUtil {
+    pub async fn download(url: &str, save_path: &str) -> anyhow::Result<()> {
+        let packages = Path::new(&preset::rg_home.clone()).join("packages");
+        if !packages.exists() {
+            fs::create_dir_all(&packages)?;
+        }
+        let full_path = Path::new(save_path);
+
+        if full_path.exists() {
+            std::fs::remove_file(full_path)?;
+        }
+
+        let mut file = File::create(&full_path).await?;
+        let response = reqwest::get(url).await?;
+        let len = response.content_length().unwrap_or(0);
+        let pb = ProgressBar::new(len);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>5}/{len:5} {msg}")?
+                .progress_chars("=> "),
+        );
+        let mut stream = response.bytes_stream();
+        while let Some(Ok(item)) = stream.next().await {
+            let chunk_size = item.len();
+            pb.inc(chunk_size.try_into().unwrap_or(0));
+            file.write_all(&item).await?;
+        }
+        pb.finish();
+
+        Ok(())
+    }
 }
 
-/// Returns a relative path without reserved names, redundant separators, ".", or "..".
-fn sanitize_file_path(path: &str) -> PathBuf {
-    // Replaces backwards slashes
-    path.replace('\\', "/")
-        // Sanitizes each component
-        .split('/')
-        .map(sanitize_filename::sanitize)
-        .collect()
+impl CommandUtil {
+    pub async fn sum_sha256(path: &str) -> anyhow::Result<String> {
+        let input = Path::new(path);
+        let val = try_async_digest(input).await?;
+        Ok(val)
+    }
 }
 
-async fn unzip_file(archive_file: File, out_dir: &Path) -> anyhow::Result<()> {
-    let archive = BufReader::new(archive_file).compat();
-    let mut reader = ZipFileReader::new(archive)
-        .await
-        .expect("Failed to read zip file");
-    for index in 0..reader.file().entries().len() {
-        let entry = reader.file().entries().get(index).unwrap();
-        let path = out_dir.join(sanitize_file_path(entry.filename().as_str().unwrap()));
-        // If the filename of the entry ends with '/', it is treated as a directory.
-        // This is implemented by previous versions of this crate and the Python Standard Library.
-        // https://docs.rs/async_zip/0.0.8/src/async_zip/read/mod.rs.html#63-65
-        // https://github.com/python/cpython/blob/820ef62833bd2d84a141adedd9a05998595d6b6d/Lib/zipfile.py#L528
-        let entry_is_dir = entry.dir().unwrap();
-
-        let mut entry_reader = reader
-            .reader_without_entry(index)
+impl CommandUtil {
+    pub async fn extract_zip_async(src_path: &str, dst_path: &str) -> anyhow::Result<()> {
+        let archive = File::open(src_path)
             .await
-            .expect("Failed to read ZipEntry");
+            .with_context(|| format!("failed to open zip {} error ", src_path.to_string().red()))?;
+        let out_dir = Path::new(dst_path);
+        CommandUtil::unzip_file(archive, out_dir).await?;
+        Ok(())
+    }
+}
 
-        if entry_is_dir {
-            // The directory may have been created if iteration is out of order.
-            if !path.exists() {
-                create_dir_all(&path)
-                    .await
-                    .expect("Failed to create extracted directory");
-            }
+impl CommandUtil {
+    async fn unpack_file(path: &str) -> anyhow::Result<()> {
+        let dst_path = Path::new(&rg_home.clone())
+            .join(preset::pkgs.clone())
+            .join("go");
+        if dst_path.exists() {
+            std::fs::remove_dir_all(dst_path)?;
+        }
+        let suffix = CommandUtil::get_suffix();
+        if suffix == "tar.gz" {
+            let tar_gz = std::fs::File::open(path)?;
+            let tar = GzDecoder::new(tar_gz);
+            let mut archive = Archive::new(tar);
+            let unpack_path = Path::new(&preset::rg_home.clone()).join(preset::pkgs.clone());
+            archive.unpack(unpack_path)?;
         } else {
-            // Creates parent directories. They may not exist if iteration is out of order
-            // or the archive does not contain directory entries.
-            let parent = path
-                .parent()
-                .expect("A file entry should have parent directories");
-            if !parent.is_dir() {
-                create_dir_all(parent)
-                    .await
-                    .expect("Failed to create parent directories");
-            }
-            let writer = OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&path)
-                .await
-                .expect("Failed to create extracted file");
-            futures_lite::io::copy(&mut entry_reader, &mut writer.compat_write())
-                .await
-                .expect("Failed to copy to extracted file");
+            // todo
+            let dst_path = Path::new(&rg_home.clone()).join(preset::pkgs.clone());
+            CommandUtil::extract_zip_async(path, &dst_path.to_string_lossy()).await?;
+        }
+        Ok(())
+    }
+}
 
-            // Closes the file and manipulates its metadata here if you wish to preserve its metadata from the archive.
+impl CommandUtil {
+    pub fn get_os() -> &'static str {
+        #[allow(unused_assignments)]
+        let mut o = "<unknown>";
+        let _ = o;
+        #[cfg(target_os = "windows")]
+        {
+            o = "windows";
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            o = "linux";
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            o = "darwin";
+        }
+        o
+    }
+}
+
+impl CommandUtil {
+    pub fn get_suffix() -> &'static str {
+        #[allow(unused_assignments)]
+        let mut suffix: &str = "<unknown>";
+        #[cfg(target_os = "windows")]
+        {
+            suffix = "zip";
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            suffix = "tar.gz";
+        }
+        suffix
+    }
+}
+
+impl CommandUtil {
+    pub fn get_arch() -> &'static str {
+        if cfg!(target_arch = "x86") {
+            "386"
+        } else if cfg!(target_arch = "x86_64") {
+            "amd64"
+        } else if cfg!(target_arch = "mips") {
+            "mips"
+        } else if cfg!(target_arch = "arm") {
+            "arm"
+        } else if cfg!(target_arch = "aarch64") {
+            "arm64"
+        } else {
+            "<unknown>"
         }
     }
-    Ok(())
+}
+
+impl CommandUtil {
+    /// Returns a relative path without reserved names, redundant separators, ".", or "..".
+    pub fn sanitize_file_path(path: &str) -> PathBuf {
+        // Replaces backwards slashes
+        path.replace('\\', "/")
+            // Sanitizes each component
+            .split('/')
+            .map(sanitize_filename::sanitize)
+            .collect()
+    }
+}
+
+impl CommandUtil {
+    pub async fn unzip_file(archive_file: File, out_dir: &Path) -> anyhow::Result<()> {
+        let archive = BufReader::new(archive_file).compat();
+        let mut reader = ZipFileReader::new(archive)
+            .await
+            .expect("Failed to read zip file");
+        for index in 0..reader.file().entries().len() {
+            let entry = reader.file().entries().get(index).unwrap();
+            let path = out_dir.join(CommandUtil::sanitize_file_path(
+                entry.filename().as_str().unwrap(),
+            ));
+            // If the filename of the entry ends with '/', it is treated as a directory.
+            // This is implemented by previous versions of this crate and the Python Standard Library.
+            // https://docs.rs/async_zip/0.0.8/src/async_zip/read/mod.rs.html#63-65
+            // https://github.com/python/cpython/blob/820ef62833bd2d84a141adedd9a05998595d6b6d/Lib/zipfile.py#L528
+            let entry_is_dir = entry.dir().unwrap();
+
+            let mut entry_reader = reader
+                .reader_without_entry(index)
+                .await
+                .expect("Failed to read ZipEntry");
+
+            if entry_is_dir {
+                // The directory may have been created if iteration is out of order.
+                if !path.exists() {
+                    create_dir_all(&path)
+                        .await
+                        .expect("Failed to create extracted directory");
+                }
+            } else {
+                // Creates parent directories. They may not exist if iteration is out of order
+                // or the archive does not contain directory entries.
+                let parent = path
+                    .parent()
+                    .expect("A file entry should have parent directories");
+                if !parent.is_dir() {
+                    create_dir_all(parent)
+                        .await
+                        .expect("Failed to create parent directories");
+                }
+                let writer = OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&path)
+                    .await
+                    .expect("Failed to create extracted file");
+                futures_lite::io::copy(&mut entry_reader, &mut writer.compat_write())
+                    .await
+                    .expect("Failed to copy to extracted file");
+
+                // Closes the file and manipulates its metadata here if you wish to preserve its metadata from the archive.
+            }
+        }
+        Ok(())
+    }
 }
