@@ -26,5 +26,5 @@ cargo install ffg
 # 设置 ffg 跟目录
 export FFG_HOME=~/.ffg
 # 将 goroot 添加到环境变量
-export PATH=$PATH:$FFG_HOME/go
+export PATH=$PATH:$FFG_HOME/go/bin
 ```
