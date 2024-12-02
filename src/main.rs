@@ -6,10 +6,10 @@ use ffg::biz::CommandAction;
 async fn main() -> anyhow::Result<()> {
     human_panic::setup_panic!();
 
-    let matches = Command::new("rg")
-        .version("0.0.1")
+    let matches = Command::new("ffg")
+        .version("0.0.2")
         .author("2356450144@qq.com")
-        .about("golang multi version manager")
+        .about("a golang multi version manager tool")
         .subcommand_required(true)
         .arg_required_else_help(true)
         .subcommand(
