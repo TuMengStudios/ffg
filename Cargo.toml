@@ -36,6 +36,7 @@ sanitize-filename = { version = "0.5.0" }
 dom_query = { version = "*" }
 colorful-console = { version = "0.3.0" }
 colored = { version = "2.1.0" }
+symlink = { version = "0.1.0" }
 
 [profile.release]
 # https://doc.rust-lang.org/cargo/reference/profiles.html
