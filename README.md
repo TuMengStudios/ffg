@@ -1,6 +1,21 @@
-# ffg go 多版本管理工具
+# ffg go mutil version manager
 
-## 环境变量设置
+[中文](./README_ZH.md)
 
-- `FFG_HOME` 默认值为 `~/.ffg`
-- `FFG_MIRROR` 默认值为 [go.dev](https://go.dev)
+## install
+
+```bash
+cargo install ffg
+```
+
+## set environment
+
+- `FFG_HOME` default value is `~/.ffg`
+- `FFG_MIRROR` default value is [go.dev](https://go.dev), if work in china's mainland please set this value `https://studygolang.com`
+
+## usage
+
+- `ffg ls` list local version
+- `ffg ls-remote` pull release version
+- `ffg use 1.15.6` install and used
+- `ffg rm 1.15.6` remove
