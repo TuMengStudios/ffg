@@ -19,3 +19,12 @@ cargo install ffg
 - `ffg ls-remote` 获取可用的版本
 - `ffg use 1.15.6` 安装并使用指定版本
 - `ffg rm 1.15.6` 删除指定版本
+
+## 添加 goroot 到 path
+
+```bash
+# 设置 ffg 跟目录
+export FFG_HOME=~/.ffg
+# 将 goroot 添加到环境变量
+export PATH=$PATH:$FFG_HOME/go
+```

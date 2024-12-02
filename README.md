@@ -19,3 +19,12 @@ cargo install ffg
 - `ffg ls-remote` pull release version
 - `ffg use 1.15.6` install and used
 - `ffg rm 1.15.6` remove
+
+## setting go path
+
+```bash
+# set ffg home
+export FFG_HOME=~/.ffg
+# add goroot to path
+export PATH=$PATH:$FFG_HOME/go
+```
