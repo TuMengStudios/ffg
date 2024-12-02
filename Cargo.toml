@@ -39,7 +39,7 @@ futures-lite = { version = "2.1.0", default-features = false, features = [
     "std",
 ] }
 sanitize-filename = { version = "0.5.0" }
-dom_query = { version = "*" }
+dom_query = { version = "0.10.0" }
 colorful-console = { version = "0.3.0" }
 colored = { version = "2.1.0" }
 symlink = { version = "0.1.0" }
