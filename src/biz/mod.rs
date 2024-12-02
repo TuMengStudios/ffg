@@ -13,7 +13,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::Url;
 
 use crate::preset;
-use crate::preset::{pkgs, rg_home, rg_mirror};
+use crate::preset::{ffg_home, ffg_mirror, pkgs};
 use async_zip::base::read::seek::ZipFileReader;
 use sha256::try_async_digest;
 use tar::Archive;
@@ -30,13 +30,13 @@ impl CommandAction {
     pub async fn rm(version: &str) -> anyhow::Result<()> {
         let curr_version = CommandAction::current_version().await?;
         let file_name = CommandUtil::file_name(version);
-        let zip_file = Path::new(&rg_home.clone())
+        let zip_file = Path::new(&ffg_home.clone())
             .join(pkgs.clone())
             .join(file_name);
         if zip_file.exists() {
             std::fs::remove_file(zip_file)?;
         }
-        let del_version_path = Path::new(&rg_home.clone())
+        let del_version_path = Path::new(&ffg_home.clone())
             .join(pkgs.clone())
             .join(format!("go{}", version));
         if !del_version_path.exists() {
@@ -46,7 +46,7 @@ impl CommandAction {
 
         // check symlink
         if curr_version.eq(version) {
-            let sym_link = Path::new(&rg_home.clone()).join("go");
+            let sym_link = Path::new(&ffg_home.clone()).join("go");
             symlink::remove_symlink_dir(&sym_link)?;
             std::fs::remove_dir_all(del_version_path)?;
         } else {
@@ -59,7 +59,7 @@ impl CommandAction {
 
 impl CommandAction {
     async fn current_version() -> anyhow::Result<String> {
-        let current_version_path = Path::new(&rg_home.clone()).join("go");
+        let current_version_path = Path::new(&ffg_home.clone()).join("go");
 
         let mut current_version: String = "".to_owned();
         if current_version_path.exists() && current_version_path.is_symlink() {
@@ -97,7 +97,7 @@ impl CommandAction {
 impl CommandAction {
     pub async fn ls() -> anyhow::Result<()> {
         let local_version = CommandAction::local_version().await?;
-        let current_version_path = Path::new(&rg_home.clone()).join("go");
+        let current_version_path = Path::new(&ffg_home.clone()).join("go");
         let mut current_version: String = "".to_owned();
         if current_version_path.exists() && current_version_path.is_symlink() {
             let res = current_version_path.read_link();
@@ -145,12 +145,12 @@ impl CommandAction {
             .find(|item| item.file_name == file_name)
             .unwrap();
 
-        let mirror = rg_mirror.clone();
+        let mirror = ffg_mirror.clone();
 
         let url = Url::parse(&mirror)?.join(&data.path)?;
         println!("downloading pkg {}", url.to_string().green());
 
-        let save_path = Path::new(&rg_home.clone())
+        let save_path = Path::new(&ffg_home.clone())
             .join(pkgs.clone())
             .join(&file_name);
 
@@ -162,17 +162,17 @@ impl CommandAction {
         }
         CommandUtil::unpack_file(save_path.to_string_lossy().as_ref()).await?;
 
-        let src_dir = Path::new(&rg_home.clone())
+        let src_dir = Path::new(&ffg_home.clone())
             .join(preset::pkgs.clone())
             .join("go");
-        let dst_dir = Path::new(&rg_home.clone())
+        let dst_dir = Path::new(&ffg_home.clone())
             .join(preset::pkgs.clone())
             .join(format!("go{}", version));
         if dst_dir.exists() {
             std::fs::remove_dir_all(&dst_dir)?;
         }
         std::fs::rename(src_dir, &dst_dir)?;
-        let soft_link = Path::new(&rg_home.clone()).join("go");
+        let soft_link = Path::new(&ffg_home.clone()).join("go");
         if soft_link.exists() {
             symlink::remove_symlink_dir(&soft_link)?;
         }
@@ -193,7 +193,7 @@ impl CommandAction {
 
 impl CommandAction {
     async fn ls_remote_internal() -> anyhow::Result<Vec<VersionMeta>> {
-        let mirror = preset::rg_mirror.clone();
+        let mirror = preset::ffg_mirror.clone();
         let dl_page_url = Url::parse(&mirror)?.join("dl")?;
         println!(
             "fetch go version's metadata from {}",
@@ -247,7 +247,10 @@ impl CommandAction {
 impl CommandAction {
     async fn local_version() -> anyhow::Result<HashSet<String>> {
         let mut local_version = HashSet::new();
-        let home = Path::new(&rg_home.clone()).join("packages");
+        let home = Path::new(&ffg_home.clone()).join("packages");
+        if !home.exists() {
+            std::fs::create_dir_all(&home)?;
+        }
         let dirs = fs::read_dir(home)?;
         dirs.for_each(|f| {
             let f = f.unwrap();
@@ -313,7 +316,7 @@ impl CommandUtil {
 
 impl CommandUtil {
     pub async fn download(url: &str, save_path: &str) -> anyhow::Result<()> {
-        let packages = Path::new(&preset::rg_home.clone()).join("packages");
+        let packages = Path::new(&preset::ffg_home.clone()).join("packages");
         if !packages.exists() {
             fs::create_dir_all(&packages)?;
         }
@@ -365,7 +368,7 @@ impl CommandUtil {
 
 impl CommandUtil {
     async fn unpack_file(path: &str) -> anyhow::Result<()> {
-        let dst_path = Path::new(&rg_home.clone())
+        let dst_path = Path::new(&ffg_home.clone())
             .join(preset::pkgs.clone())
             .join("go");
         if dst_path.exists() {
@@ -376,11 +379,11 @@ impl CommandUtil {
             let tar_gz = std::fs::File::open(path)?;
             let tar = GzDecoder::new(tar_gz);
             let mut archive = Archive::new(tar);
-            let unpack_path = Path::new(&preset::rg_home.clone()).join(preset::pkgs.clone());
+            let unpack_path = Path::new(&preset::ffg_home.clone()).join(preset::pkgs.clone());
             archive.unpack(unpack_path)?;
         } else {
             // todo
-            let dst_path = Path::new(&rg_home.clone()).join(preset::pkgs.clone());
+            let dst_path = Path::new(&ffg_home.clone()).join(preset::pkgs.clone());
             CommandUtil::extract_zip_async(path, &dst_path.to_string_lossy()).await?;
         }
         Ok(())

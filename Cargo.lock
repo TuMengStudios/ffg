@@ -609,6 +609,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "486f806e73c5707928240ddc295403b1b93c96a02038563881c4a2fd84b81ac4"
 
 [[package]]
+name = "ffg"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async_zip",
+ "clap",
+ "colored",
+ "colorful-console",
+ "dirs",
+ "dom_query",
+ "flate2",
+ "futures-lite",
+ "futures-util",
+ "human-panic",
+ "indicatif",
+ "lazy_static",
+ "reqwest",
+ "sanitize-filename",
+ "sha256",
+ "symlink",
+ "tar",
+ "thiserror 2.0.3",
+ "tokio",
+ "tokio-util",
+ "zip",
+]
+
+[[package]]
 name = "filetime"
 version = "0.2.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1777,34 +1805,6 @@ dependencies = [
  "wasm-streams",
  "web-sys",
  "windows-registry",
-]
-
-[[package]]
-name = "rg"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async_zip",
- "clap",
- "colored",
- "colorful-console",
- "dirs",
- "dom_query",
- "flate2",
- "futures-lite",
- "futures-util",
- "human-panic",
- "indicatif",
- "lazy_static",
- "reqwest",
- "sanitize-filename",
- "sha256",
- "symlink",
- "tar",
- "thiserror 2.0.3",
- "tokio",
- "tokio-util",
- "zip",
 ]
 
 [[package]]
