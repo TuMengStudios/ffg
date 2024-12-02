@@ -1,12 +1,11 @@
 use clap::{arg, Command};
 
-use rg::biz::CommandAction;
+use ffg::biz::CommandAction;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     human_panic::setup_panic!();
 
-    // std::env::set_var("RG_MIRROR", "https://studygolang.com");
     let matches = Command::new("rg")
         .version("0.0.1")
         .author("2356450144@qq.com")
