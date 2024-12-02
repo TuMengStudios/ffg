@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::exit;
 use std::str;
@@ -43,15 +43,16 @@ impl CommandAction {
             println!("not found version {}", version.red().bold());
             exit(1);
         }
+
+        // check symlink
         if curr_version.eq(version) {
-            // todo
-            let sym_link = Path::new(&rg_home.clone()).join(format!("go{}", version));
+            let sym_link = Path::new(&rg_home.clone()).join("go");
+            symlink::remove_symlink_dir(&sym_link)?;
             std::fs::remove_dir_all(del_version_path)?;
-            std::fs::remove_file(sym_link)?;
         } else {
             std::fs::remove_dir_all(del_version_path)?;
         }
-        println!("remove {} sym", version.red());
+        println!("remove {}", version.red());
         Ok(())
     }
 }
@@ -76,11 +77,19 @@ impl CommandAction {
 
 impl CommandAction {
     pub async fn ls_remote() -> anyhow::Result<()> {
-        let pkg_list = CommandAction::ls_remote_internal().await?;
-        pkg_list.keys().for_each(|e| {
-            // todo
-            println!("{}", e.bold())
+        let curr_version = CommandAction::current_version().await?;
+        let local_versions = CommandAction::local_version().await?;
+        let remote_versions = CommandAction::ls_remote_internal().await?;
+        remote_versions.iter().for_each(|item| {
+            if curr_version == item.version {
+                println!("*{} current", item.version.bold().green());
+            } else if local_versions.contains(&item.version) {
+                println!("{}", item.version.magenta());
+            } else {
+                println!("{}", item.version.bold());
+            }
         });
+
         Ok(())
     }
 }
@@ -102,7 +111,7 @@ impl CommandAction {
 
         local_version.iter().for_each(|f| {
             if current_version.contains(f) {
-                println!("{} {}", f.green(), "*current".to_owned())
+                println!("*{} {}", f.green(), "current".to_owned())
             } else {
                 println!("{}", f);
             }
@@ -114,21 +123,31 @@ impl CommandAction {
 impl CommandAction {
     pub async fn use_action(version: &str) -> anyhow::Result<()> {
         println!("use {}", version.bold().green());
-        let package_list = CommandAction::ls_remote_internal().await?;
-        if !package_list.contains_key(version) {
+        let remote_versions = CommandAction::ls_remote_internal().await?;
+        if remote_versions
+            .iter()
+            .find(|item| item.version.eq(version))
+            .take()
+            .is_none()
+        {
             println!("{}", "not found version".bold().red());
             return Ok(());
         }
 
         let file_name = CommandUtil::file_name(version);
 
-        let mirror = rg_mirror.clone();
-        let data = package_list
-            .get(version)
-            .unwrap()
+        let data = remote_versions
             .iter()
-            .find(|e| e.file_name == file_name);
-        let url = Url::parse(&mirror)?.join(&data.unwrap().path)?;
+            .find(|item| item.version == version)
+            .unwrap()
+            .package
+            .iter()
+            .find(|item| item.file_name == file_name)
+            .unwrap();
+
+        let mirror = rg_mirror.clone();
+
+        let url = Url::parse(&mirror)?.join(&data.path)?;
         println!("downloading pkg {}", url.to_string().green());
 
         let save_path = Path::new(&rg_home.clone())
@@ -137,7 +156,7 @@ impl CommandAction {
 
         CommandUtil::download(url.as_str(), save_path.to_string_lossy().as_ref()).await?;
         let sha256 = CommandUtil::sum_sha256(save_path.to_string_lossy().as_ref()).await?;
-        if !sha256.eq(&data.unwrap().sha256_checksum) {
+        if !sha256.eq(&data.sha256_checksum) {
             println!("checksum not pass {}", sha256.red());
             exit(1);
         }
@@ -155,23 +174,17 @@ impl CommandAction {
         std::fs::rename(src_dir, &dst_dir)?;
         let soft_link = Path::new(&rg_home.clone()).join("go");
         if soft_link.exists() {
-            std::fs::remove_file(&soft_link)?;
+            symlink::remove_symlink_dir(&soft_link)?;
         }
 
         #[cfg(target_os = "windows")]
         {
-            std::os::windows::fs::symlink_dir(&dst_dir, &soft_link).with_context(|| {
-                format!(
-                    "create dir symlink origin {:?} to {:?} ",
-                    dst_dir.to_str(),
-                    soft_link.to_str()
-                )
-            })?;
+            symlink::symlink_dir(&dst_dir, &soft_link)?;
         }
 
         #[cfg(not(target_os = "windows"))]
         {
-            std::os::unix::fs::symlink(&dst_dir, Path::new(&rg_home.clone()).join("go"))?;
+            symlink::symlink_dir(&dst_dir, &soft_link)?;
         }
 
         Ok(())
@@ -179,7 +192,7 @@ impl CommandAction {
 }
 
 impl CommandAction {
-    async fn ls_remote_internal() -> anyhow::Result<HashMap<String, Vec<PackageInfo>>> {
+    async fn ls_remote_internal() -> anyhow::Result<Vec<VersionMeta>> {
         let mirror = preset::rg_mirror.clone();
         let dl_page_url = Url::parse(&mirror)?.join("dl")?;
         println!(
@@ -188,9 +201,8 @@ impl CommandAction {
         );
         let body = reqwest::get(dl_page_url.as_str()).await?.text().await?;
         let doc = dom_query::Document::from(body.clone());
-        let mut package_list: HashMap<String, Vec<PackageInfo>> = HashMap::new();
 
-        [
+        let meta = [
             doc.select(".toggle").iter().collect::<Vec<_>>().as_slice(),
             doc.select(".toggleVisible")
                 .iter()
@@ -224,13 +236,11 @@ impl CommandAction {
                     PackageInfo::new(file_name, path, checksum)
                 })
                 .collect();
-            (version, pack_list)
+            VersionMeta::new(&version, pack_list)
         })
-        .for_each(|(version, pk_list)| {
-            package_list.insert(version.clone(), pk_list);
-        });
+        .collect();
 
-        Ok(package_list)
+        Ok(meta)
     }
 }
 
@@ -256,11 +266,26 @@ impl CommandAction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct PackageInfo {
     path: String,
     file_name: String,
     sha256_checksum: String,
+}
+
+#[derive(Clone)]
+struct VersionMeta {
+    version: String,
+    package: Vec<PackageInfo>,
+}
+
+impl VersionMeta {
+    pub fn new(version: &str, pks: Vec<PackageInfo>) -> Self {
+        Self {
+            version: version.to_owned(),
+            package: pks,
+        }
+    }
 }
 
 impl PackageInfo {
