@@ -3,6 +3,12 @@ name = "ffg"
 version = "0.1.0"
 edition = "2021"
 authors = ["2356450144@qq.com"]
+repository = "https://github.com/TuMengStudios/ffg.git"
+keywords = ["go version manager tool"]
+readme = "README.md"
+description = "a golang version manager tool"
+license = "MIT"
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
