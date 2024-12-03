@@ -4,6 +4,7 @@ use colored::Colorize;
 use lazy_static;
 
 lazy_static::lazy_static! {
+    /// ffg home dir default is user's  .ffg
     pub static  ref ffg_home:String = {
       let home_dir =  dirs::home_dir().unwrap();
       match  std::env::var("FFG_HOME") {
@@ -19,6 +20,7 @@ lazy_static::lazy_static! {
       }
     };
 
+    /// download mirror default is https://go.dev
     pub static  ref ffg_mirror:String = {
       match std::env::var("FFG_MIRROR") {
         Ok(mirror) => {
@@ -33,6 +35,7 @@ lazy_static::lazy_static! {
     }
     };
 
+    /// just packages preset
     pub static ref pkgs :String =  {
       let pck = Path::new(&ffg_home.clone()).join("packages");
       if  !pck.exists() {

@@ -27,6 +27,70 @@ pub struct CommandAction {
 }
 
 impl CommandAction {
+    /// just install specify version
+    pub async fn ins(version: &str) -> anyhow::Result<()> {
+        println!("install {}", version.green().bold());
+        let local_versions = CommandAction::local_version().await?;
+        if local_versions.contains(version) {
+            println!("already installed {}", version.green());
+            return Ok(());
+        }
+        let remote_version_meta = CommandAction::ls_remote_internal().await?;
+        if remote_version_meta
+            .iter()
+            .find(|item| item.version == version)
+            .take()
+            .is_none()
+        {
+            anyhow::bail!(format!(
+                "not found go version {}, please use command {} before install specify version",
+                version.red().bold(),
+                "ffg ls-remote".red().bold()
+            ))
+        }
+
+        let file_name = CommandUtil::file_name(version);
+
+        let data = remote_version_meta
+            .iter()
+            .find(|item| item.version == version)
+            .unwrap()
+            .package
+            .iter()
+            .find(|item| item.file_name == file_name)
+            .unwrap();
+
+        let mirror = ffg_mirror.clone();
+
+        let url = Url::parse(&mirror)?.join(&data.path)?;
+        println!("downloading pkg {}", url.to_string().green());
+
+        let save_path = Path::new(&ffg_home.clone())
+            .join(pkgs.clone())
+            .join(&file_name);
+
+        CommandUtil::download(url.as_str(), save_path.to_string_lossy().as_ref()).await?;
+        let sha256 = CommandUtil::sum_sha256(save_path.to_string_lossy().as_ref()).await?;
+        if !sha256.eq(&data.sha256_checksum) {
+            anyhow::bail!(format!("checksum not pass"))
+        }
+        CommandUtil::unpack_file(save_path.to_string_lossy().as_ref()).await?;
+        let src_dir = Path::new(&ffg_home.clone())
+            .join(preset::pkgs.clone())
+            .join("go");
+        let dst_dir = Path::new(&ffg_home.clone())
+            .join(preset::pkgs.clone())
+            .join(format!("go{}", version));
+        if dst_dir.exists() {
+            std::fs::remove_dir_all(&dst_dir)?;
+        }
+        std::fs::rename(src_dir, &dst_dir)?;
+        Ok(())
+    }
+}
+
+impl CommandAction {
+    /// remove specify version
     pub async fn rm(version: &str) -> anyhow::Result<()> {
         let curr_version = CommandAction::current_version().await?;
         let file_name = CommandUtil::file_name(version);
@@ -58,6 +122,7 @@ impl CommandAction {
 }
 
 impl CommandAction {
+    /// current used version
     async fn current_version() -> anyhow::Result<String> {
         let current_version_path = Path::new(&ffg_home.clone()).join("go");
 
@@ -76,6 +141,7 @@ impl CommandAction {
 }
 
 impl CommandAction {
+    /// fetch released version
     pub async fn ls_remote() -> anyhow::Result<()> {
         let curr_version = CommandAction::current_version().await?;
         let local_versions = CommandAction::local_version().await?;
@@ -95,6 +161,7 @@ impl CommandAction {
 }
 
 impl CommandAction {
+    /// list installed version
     pub async fn ls() -> anyhow::Result<()> {
         let local_version = CommandAction::local_version().await?;
         let current_version_path = Path::new(&ffg_home.clone()).join("go");
@@ -121,57 +188,15 @@ impl CommandAction {
 }
 
 impl CommandAction {
+    /// use specific version, if not installed will install and then check out
     pub async fn use_action(version: &str) -> anyhow::Result<()> {
         println!("use {}", version.bold().green());
-        let remote_versions = CommandAction::ls_remote_internal().await?;
-        if remote_versions
-            .iter()
-            .find(|item| item.version.eq(version))
-            .take()
-            .is_none()
-        {
-            println!("{}", "not found version".bold().red());
-            return Ok(());
-        }
 
-        let file_name = CommandUtil::file_name(version);
-
-        let data = remote_versions
-            .iter()
-            .find(|item| item.version == version)
-            .unwrap()
-            .package
-            .iter()
-            .find(|item| item.file_name == file_name)
-            .unwrap();
-
-        let mirror = ffg_mirror.clone();
-
-        let url = Url::parse(&mirror)?.join(&data.path)?;
-        println!("downloading pkg {}", url.to_string().green());
-
-        let save_path = Path::new(&ffg_home.clone())
-            .join(pkgs.clone())
-            .join(&file_name);
-
-        CommandUtil::download(url.as_str(), save_path.to_string_lossy().as_ref()).await?;
-        let sha256 = CommandUtil::sum_sha256(save_path.to_string_lossy().as_ref()).await?;
-        if !sha256.eq(&data.sha256_checksum) {
-            println!("checksum not pass {}", sha256.red());
-            exit(1);
-        }
-        CommandUtil::unpack_file(save_path.to_string_lossy().as_ref()).await?;
-
-        let src_dir = Path::new(&ffg_home.clone())
-            .join(preset::pkgs.clone())
-            .join("go");
         let dst_dir = Path::new(&ffg_home.clone())
             .join(preset::pkgs.clone())
             .join(format!("go{}", version));
-        if dst_dir.exists() {
-            std::fs::remove_dir_all(&dst_dir)?;
-        }
-        std::fs::rename(src_dir, &dst_dir)?;
+
+        CommandAction::ins(version).await?;
         let soft_link = Path::new(&ffg_home.clone()).join("go");
         if soft_link.exists() {
             symlink::remove_symlink_dir(&soft_link)?;
@@ -513,5 +538,20 @@ impl CommandUtil {
             }
         }
         Ok(())
+    }
+}
+
+mod test {
+    #[allow(unused_imports)]
+    use super::CommandUtil;
+
+    #[test]
+    fn test_suffix() {
+        let suffix = CommandUtil::get_suffix();
+        #[cfg(target_os = "windows")]
+        assert_eq!(suffix, "zip");
+
+        #[cfg(not(target_os = "windows"))]
+        assert_eq!(suffix, "tar.gz");
     }
 }

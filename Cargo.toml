@@ -1,6 +1,6 @@
 [package]
 name = "ffg"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 authors = ["2356450144@qq.com"]
 repository = "https://github.com/TuMengStudios/ffg.git"

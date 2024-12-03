@@ -7,7 +7,7 @@ async fn main() -> anyhow::Result<()> {
     human_panic::setup_panic!();
 
     let matches = Command::new("ffg")
-        .version("0.0.2")
+        .version("0.1.3")
         .author("2356450144@qq.com")
         .about("a golang multi version manager tool")
         .subcommand_required(true)
@@ -24,6 +24,11 @@ async fn main() -> anyhow::Result<()> {
                 .about("remove go version"),
         )
         .subcommand(Command::new("ls-remote").about("list remote go version"))
+        .subcommand(
+            Command::new("ins")
+                .args([arg!([version]).help("install version").required(true)])
+                .about("install specific version"),
+        )
         .get_matches();
 
     match matches.subcommand() {
@@ -46,7 +51,16 @@ async fn main() -> anyhow::Result<()> {
             let version = sub_matches
                 .get_one::<String>("version")
                 .unwrap_or(&default_version);
+
             CommandAction::rm(version).await?;
+        }
+        Some(("ins", sub_matches)) => {
+            let default_version = String::new();
+            let version = sub_matches
+                .get_one::<String>("version")
+                .unwrap_or(&default_version);
+
+            CommandAction::ins(version).await?;
         }
         _ => unreachable!(),
     }
