@@ -19,6 +19,7 @@ cargo install ffg
 - `ffg ls-remote` 获取可用的版本
 - `ffg use 1.15.6` 安装并使用指定版本
 - `ffg rm 1.15.6` 删除指定版本
+- `ffg ins 1.15.6` 安装特定的版本
 
 ## 添加 goroot 到 path
 
