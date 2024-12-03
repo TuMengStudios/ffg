@@ -42,7 +42,11 @@ impl CommandAction {
             .take()
             .is_none()
         {
-            anyhow::bail!(format!("not found go version {}, please use command {} before install specify version", version.red().bold(),"ffg ls-remote".red().bold()))
+            anyhow::bail!(format!(
+                "not found go version {}, please use command {} before install specify version",
+                version.red().bold(),
+                "ffg ls-remote".red().bold()
+            ))
         }
 
         let file_name = CommandUtil::file_name(version);

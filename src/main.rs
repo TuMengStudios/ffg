@@ -51,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
             let version = sub_matches
                 .get_one::<String>("version")
                 .unwrap_or(&default_version);
+
             CommandAction::rm(version).await?;
         }
         Some(("ins", sub_matches)) => {
@@ -58,6 +59,7 @@ async fn main() -> anyhow::Result<()> {
             let version = sub_matches
                 .get_one::<String>("version")
                 .unwrap_or(&default_version);
+
             CommandAction::ins(version).await?;
         }
         _ => unreachable!(),
