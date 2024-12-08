@@ -7,7 +7,7 @@ async fn main() -> anyhow::Result<()> {
     human_panic::setup_panic!();
 
     let matches = Command::new("ffg")
-        .version("0.1.3")
+        .version("0.1.4")
         .author("2356450144@qq.com")
         .about("a golang multi version manager tool")
         .subcommand_required(true)
